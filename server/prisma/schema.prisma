@@ -1,0 +1,617 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum Badge {
+  BAN_CHAY_NHAT
+  SAP_CHAY_HANG
+  VUA_MO_BAN
+  MOI
+}
+
+enum PaymentMethod {
+  COD
+  BANK_TRANSFER
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  SHIPPING
+  COMPLETED
+  CANCELLED
+}
+
+// Tách biệt với OrderStatus - 1 đơn COD "COMPLETED" (đã giao) không có nghĩa
+// tiền đã về, và 1 đơn BANK_TRANSFER có thể "PENDING" (chưa xử lý) nhưng đã
+// chuyển khoản xong. Admin tự đánh dấu PAID sau khi xác nhận đã nhận được
+// tiền (chuyển khoản) - không tự động dựa vào OrderStatus.
+enum PaymentStatus {
+  UNPAID
+  PAID
+}
+
+enum CouponDiscountType {
+  PERCENT
+  FIXED
+}
+
+enum ContactSubject {
+  TU_VAN
+  BAO_HANH
+  DON_HANG
+  KHAC
+}
+
+enum ContactStatus {
+  NEW
+  RESOLVED
+}
+
+model Post {
+  id          Int      @id @default(autoincrement())
+  slug        String   @unique
+  title       String
+  excerpt     String   @db.Text
+  content     String   @db.Text
+  image       String?
+  category    String
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Category {
+  id            Int           @id @default(autoincrement())
+  slug          String        @unique
+  name          String
+  icon          String?
+  position      Int           @default(0)
+  subCategories SubCategory[]
+  products      Product[]
+}
+
+model SubCategory {
+  id               Int              @id @default(autoincrement())
+  slug             String           @unique
+  name             String
+  icon             String?
+  position         Int              @default(0)
+  category         Category         @relation(fields: [categoryId], references: [id])
+  categoryId       Int
+  subSubCategories SubSubCategory[]
+  products         Product[]
+}
+
+model SubSubCategory {
+  id            Int         @id @default(autoincrement())
+  slug          String      @unique
+  name          String
+  icon          String?
+  position      Int         @default(0)
+  subCategory   SubCategory @relation(fields: [subCategoryId], references: [id])
+  subCategoryId Int
+  products      Product[]
+}
+
+model Product {
+  id              Int                    @id @default(autoincrement())
+  name            String
+  // Dạng "ten-san-pham-<id>" cho URL thân thiện SEO - luôn có id thật ở
+  // cuối nên không bao giờ đụng hàng dù tên trùng nhau, và URL vẫn tra cứu
+  // đúng ngay cả khi tên đổi sau này (xem server/src/utils/slugify.js).
+  slug            String                 @unique
+  // Mã quản lý nội bộ - KHÔNG hiển thị ra website, chỉ để admin phân biệt các
+  // sản phẩm trùng tên (vd cùng tên nhưng khác màu/phiên bản). Cho phép NULL
+  // (MySQL unique index coi mỗi NULL là khác nhau) vì các sản phẩm cũ chưa có SKU.
+  sku             String?                @unique
+  brand           String
+  price           Int
+  oldPrice        Int
+  rating          Float                  @default(0)
+  reviewCount     Int                    @default(0)
+  sold            Int                    @default(0)
+  // Số lượng tồn kho thật - tách riêng khỏi `sold` (đã bán) và `specs` (JSON tự
+  // do) để sau này dễ xuất file quản lý xuất nhập tồn.
+  stock           Int                    @default(0)
+  // Cân nặng (gram) - phục vụ tính phí ship khi tích hợp đơn vị vận chuyển sau
+  // này. Cho phép NULL vì sản phẩm cũ chưa nhập; không bắt buộc ngay.
+  weight          Int?
+  badge           Badge?
+  description     String                 @db.Text
+  specs           Json
+  category        Category               @relation(fields: [categoryId], references: [id])
+  categoryId      Int
+  subCategory     SubCategory?           @relation(fields: [subCategoryId], references: [id])
+  subCategoryId   Int?
+  subSubCategory  SubSubCategory?        @relation(fields: [subSubCategoryId], references: [id])
+  subSubCategoryId Int?
+  // Khuyến mãi "giờ vàng" có hạn: đếm ngược trên client khi promoEndsAt còn ở
+  // tương lai. promoSlots/promoSold là số suất khuyến mãi admin tự đặt cho
+  // mục đích marketing (tạo cảm giác khan hiếm) - độc lập với `sold` (tổng số
+  // đã bán thật của sản phẩm).
+  promoEndsAt     DateTime?
+  promoSlots      Int?
+  promoSold       Int                    @default(0)
+  images          ProductImage[]
+  orderItems      OrderItem[]
+  reviews         Review[]
+  wishlist        Wishlist[]
+  recommendations ProductRecommendation[] @relation("SourceProduct")
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+
+  @@index([categoryId])
+  @@index([subCategoryId])
+  @@index([subSubCategoryId])
+}
+
+model ProductImage {
+  id        Int     @id @default(autoincrement())
+  url       String
+  position  Int     @default(0)
+  product   Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId Int
+}
+
+model Admin {
+  id           Int               @id @default(autoincrement())
+  email        String            @unique
+  password     String
+  name         String            @default("Admin")
+  // OWNER: tài khoản gốc, duy nhất người quản lý được thành viên. MANAGER:
+  // toàn quyền trừ quản lý thành viên. STAFF: chỉ Sản phẩm + Đơn hàng.
+  role         AdminRole         @default(STAFF)
+  // Tăng lên khi logout hoặc đổi mật khẩu để thu hồi mọi JWT đã phát hành
+  // trước đó (JWT vốn không tự hủy được phía server nếu chỉ verify chữ ký).
+  tokenVersion Int               @default(0)
+  createdAt    DateTime          @default(now())
+  activityLogs AdminActivityLog[]
+}
+
+enum AdminRole {
+  OWNER
+  MANAGER
+  STAFF
+}
+
+// Nhật ký hành động của thành viên quản trị (phục vụ "xuất báo cáo sử dụng").
+// Lưu lại tên/email admin tại thời điểm thao tác (denormalized) để báo cáo
+// vẫn còn ý nghĩa ngay cả khi tài khoản đó sau này bị xóa.
+model AdminActivityLog {
+  id         Int      @id @default(autoincrement())
+  admin      Admin?   @relation(fields: [adminId], references: [id], onDelete: SetNull)
+  adminId    Int?
+  adminName  String
+  adminEmail String
+  action     String
+  entityType String
+  entityId   Int?
+  detail     String   @db.Text
+  createdAt  DateTime @default(now())
+
+  @@index([adminId])
+  @@index([createdAt])
+}
+
+model Customer {
+  id               Int       @id @default(autoincrement())
+  name             String
+  // Không còn @unique - cho phép đăng ký lại bằng email đã từng bị xoá (xem
+  // ghi chú ở deletedAt). Tính duy nhất chỉ áp dụng cho tài khoản CÒN hoạt
+  // động (deletedAt: null), được kiểm tra ở tầng ứng dụng (customerAuthController,
+  // adminCustomersController), không phải ở DB.
+  email            String
+  phone            String?
+  password         String
+  resetToken       String?
+  resetTokenExpiry DateTime?
+  // Tăng lên khi logout hoặc đặt lại mật khẩu để thu hồi mọi JWT đã phát
+  // hành trước đó (JWT vốn không tự hủy được phía server nếu chỉ verify
+  // chữ ký).
+  tokenVersion     Int       @default(0)
+  // Cờ admin tự đánh dấu thủ công ở /admin/customers khi thấy khách hàng
+  // cần chú ý đặc biệt - độc lập với các cờ tự động (contact NEW, chat
+  // needsHelp) để admin luôn có thể tự quyết định, không chỉ dựa vào suy đoán.
+  needsAttention   Boolean   @default(false)
+  // Xoá mềm - khách tự xoá tài khoản (deleteAccount) chỉ đánh dấu thời điểm
+  // xoá thay vì xoá hẳn dòng, để giữ lại lịch sử đơn hàng + vẫn hiện đúng
+  // email đã xoá trong báo cáo admin. Login/me đều chặn khi trường này khác
+  // null; email đã xoá được phép đăng ký lại (tạo dòng Customer mới, dòng cũ
+  // vẫn giữ nguyên cho báo cáo).
+  deletedAt        DateTime?
+  // Admin khoá tài khoản (khác xoá - dữ liệu/lịch sử giữ nguyên, khách chỉ
+  // không đăng nhập được nữa). Kiểm tra ở customerAuthController.login,
+  // tương tự cách deletedAt được kiểm tra.
+  blocked          Boolean   @default(false)
+  createdAt        DateTime  @default(now())
+  orders           Order[]
+  contactMessages  ContactMessage[]
+  chatMessages     ChatMessage[]
+  reviews          Review[]
+  wishlist         Wishlist[]
+  newsletterSubscription NewsletterSubscription?
+
+  @@index([email])
+}
+
+// Đánh giá thật của khách hàng đã mua sản phẩm - thay thế cho việc admin tự
+// gõ Product.rating/reviewCount thủ công trước đây. Chỉ khách hàng có đơn
+// hàng COMPLETED chứa đúng sản phẩm này mới được gửi đánh giá (kiểm tra ở
+// reviewsController, không có ràng buộc DB vì cần join qua Order/OrderItem),
+// mỗi khách chỉ đánh giá 1 lần cho mỗi sản phẩm (@@unique bên dưới - sửa lại
+// thì update dòng cũ thay vì tạo dòng mới). approved mặc định false - phải
+// qua admin duyệt (chống spam/nội dung xấu) mới cộng vào Product.rating/
+// reviewCount và hiển thị công khai trên trang sản phẩm.
+model Review {
+  id         Int      @id @default(autoincrement())
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  Int
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId Int
+  rating     Int
+  comment    String?  @db.Text
+  approved   Boolean  @default(false)
+  // Phản hồi công khai của admin dưới đánh giá (vd cảm ơn, giải thích, xin
+  // lỗi) - hiển thị ngay dưới review đó trên trang sản phẩm. null = chưa
+  // phản hồi hoặc admin đã xoá phản hồi.
+  adminReply   String?   @db.Text
+  adminReplyAt DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([productId, customerId])
+  @@index([productId])
+}
+
+// Sản phẩm khách hàng lưu để xem/mua lại sau - mỗi khách chỉ lưu 1 lần cho
+// mỗi sản phẩm (@@unique), giống cách Review ràng buộc customer-product.
+model Wishlist {
+  id         Int      @id @default(autoincrement())
+  customer   Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  customerId Int
+  product    Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  productId  Int
+  createdAt  DateTime @default(now())
+
+  @@unique([customerId, productId])
+  @@index([customerId])
+}
+
+// Nhật ký khách hàng tự thay đổi hồ sơ/xoá tài khoản - khác AdminActivityLog
+// (đó là hành động của ADMIN, đây là hành động của chính KHÁCH HÀNG). Snapshot
+// tên/email lúc ghi để log vẫn đọc được đầy đủ dù sau này customerId không
+// còn khớp dữ liệu hiện tại (không có quan hệ FK tới Customer, giống cách
+// AdminActivityLog snapshot adminName/adminEmail).
+model CustomerActivityLog {
+  id            Int      @id @default(autoincrement())
+  customerId    Int?
+  customerName  String
+  customerEmail String
+  action        String
+  detail        String   @db.Text
+  createdAt     DateTime @default(now())
+}
+
+model Order {
+  id            Int           @id @default(autoincrement())
+  code          String        @unique
+  customer      Customer?     @relation(fields: [customerId], references: [id])
+  customerId    Int?
+  customerName  String
+  phone         String
+  // Chuỗi địa chỉ đầy đủ, hiển thị (hoá đơn PDF, email, danh sách admin) -
+  // được server tự ghép lại từ addressDetail + wardName + provinceName lúc
+  // đặt hàng (xem ordersController.create), không phải khách gõ trực tiếp.
+  address       String
+  // 4 trường có cấu trúc theo chuẩn hành chính 2 cấp (Tỉnh/Thành -> Phường/Xã,
+  // sau sáp nhập 01/07/2025, xem server/src/data/vietnamAddress.js) - cần cho
+  // việc tích hợp API đơn vị vận chuyển sau này (họ yêu cầu mã tỉnh/phường
+  // chuẩn, không nhận được chuỗi tự do). Tên (provinceName/wardName) được lưu
+  // kèm mã để hiển thị nhanh không phải tra cứu lại, và để vẫn đúng ngay cả
+  // khi dữ liệu hành chính nguồn thay đổi sau này.
+  provinceCode  String?
+  provinceName  String?
+  wardCode      String?
+  wardName      String?
+  addressDetail String?
+  note          String?       @db.Text
+  paymentMethod PaymentMethod @default(COD)
+  paymentStatus PaymentStatus @default(UNPAID)
+  status        OrderStatus   @default(PENDING)
+  total         Int
+  // Phí ship + giảm giá mã coupon đã được cộng/trừ VÀO `total` ở trên (total
+  // là số tiền khách phải trả cuối cùng) - 2 field này chỉ lưu lại ĐỂ HIỂN
+  // THỊ minh bạch (hoá đơn/chi tiết đơn hàng), không dùng để tính lại total.
+  shippingFee    Int     @default(0)
+  discountAmount Int     @default(0)
+  // Mã coupon đã áp dụng lúc đặt hàng (nếu có) - lưu lại string thay vì quan
+  // hệ tới Coupon để vẫn hiển thị đúng mã đã dùng kể cả khi coupon đó sau
+  // này bị xoá.
+  couponCode     String?
+  // Email nhận thông báo trạng thái đơn hàng - độc lập với Customer.email
+  // (khách vãng lai - không có tài khoản - vẫn điền được để nhận email xác
+  // nhận/cập nhật đơn). Khách đã đăng nhập thì client tự điền sẵn email tài
+  // khoản, vẫn cho sửa nếu muốn nhận ở email khác.
+  customerEmail  String?
+  invoiceRequested Boolean    @default(false)
+  companyName      String?
+  companyTaxCode   String?
+  companyAddress   String?
+  companyEmail     String?
+  items         OrderItem[]
+  statusHistory OrderStatusHistory[]
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+}
+
+// Lịch sử các mốc thay đổi trạng thái đơn hàng - dùng để hiển thị timeline
+// theo dõi đơn cho khách hàng và admin (khác Order.status vốn chỉ giữ trạng
+// thái HIỆN TẠI, không lưu lại các mốc trước đó).
+model OrderStatusHistory {
+  id        Int         @id @default(autoincrement())
+  order     Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   Int
+  status    OrderStatus
+  createdAt DateTime    @default(now())
+
+  @@index([orderId])
+}
+
+model OrderItem {
+  id        Int     @id @default(autoincrement())
+  order     Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  orderId   Int
+  product   Product @relation(fields: [productId], references: [id])
+  productId Int
+  name      String
+  price     Int
+  quantity  Int
+  image     String?
+}
+
+// Mã giảm giá admin tạo ở /admin/coupons - khách nhập ở giỏ hàng lúc checkout,
+// server validate lại toàn bộ điều kiện (không chỉ tin client) trước khi áp
+// dụng vào đơn hàng.
+model Coupon {
+  id            Int                @id @default(autoincrement())
+  code          String             @unique
+  discountType  CouponDiscountType @default(PERCENT)
+  // PERCENT: 1-100 (%). FIXED: số tiền VND cố định.
+  discountValue Int
+  // Đơn hàng phải đạt tối thiểu số tiền này (trước khi trừ giảm giá) mới
+  // dùng được mã - 0 = không giới hạn.
+  minOrderTotal Int                @default(0)
+  // null = không giới hạn số lần dùng (tính trên toàn bộ khách hàng, không
+  // phải theo từng khách - đơn giản hoá, phù hợp quy mô hiện tại).
+  maxUses       Int?
+  usedCount     Int                @default(0)
+  active        Boolean            @default(true)
+  expiresAt     DateTime?
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+}
+
+model ContactMessage {
+  id         Int            @id @default(autoincrement())
+  name       String
+  email      String?
+  phone      String?
+  subject    ContactSubject @default(KHAC)
+  message    String         @db.Text
+  status     ContactStatus  @default(NEW)
+  // Chỉ được gắn khi người gửi đang đăng nhập lúc gửi form Liên hệ (token
+  // khách hàng tự động đính kèm qua apiClient) - null nếu khách vãng lai.
+  customer   Customer?      @relation(fields: [customerId], references: [id])
+  customerId Int?
+  createdAt  DateTime       @default(now())
+}
+
+// Đăng ký nhận tin ở Footer - mở cho mọi người, chỉ cần email, không bắt
+// buộc đăng nhập. Nếu email trùng với một tài khoản khách hàng có sẵn (lúc
+// đăng ký nhận tin hoặc tra cứu sau này), tự động gắn customerId để hiển thị
+// trong trang quản lý khách hàng.
+model NewsletterSubscription {
+  id           Int       @id @default(autoincrement())
+  email        String    @unique
+  customer     Customer? @relation(fields: [customerId], references: [id])
+  customerId   Int?      @unique
+  subscribedAt DateTime  @default(now())
+}
+
+// Lịch sử chat với chatbot (ai-service ghi trực tiếp qua raw SQL, không qua
+// Prisma Client vì ai-service là service Python riêng). customerId chỉ có
+// khi khách đã đăng nhập lúc chat (ChatWidget gửi kèm JWT); khách vãng lai
+// vẫn được trả lời bình thường nhưng không gắn được với ai. needsHelp tự
+// động bật khi câu trả lời của bot có nhắc tới hotline (nghĩa là bot không
+// tự giải quyết được, gợi ý khách gọi người thật).
+model ChatMessage {
+  id         Int       @id @default(autoincrement())
+  customer   Customer? @relation(fields: [customerId], references: [id])
+  customerId Int?
+  message    String    @db.Text
+  reply      String    @db.Text
+  needsHelp  Boolean   @default(false)
+  createdAt  DateTime  @default(now())
+}
+
+// Bảng cấu hình chung toàn site - chỉ có đúng 1 dòng (id cố định = 1), sửa
+// qua trang admin /admin/settings. Server và ai-service (chatbot) đều đọc
+// từ đây thay vì hardcode hotline/địa chỉ rải rác nhiều nơi.
+model SiteSettings {
+  id               Int    @id @default(1)
+  hotline          String
+  // Số điện thoại riêng cho chatbot đọc ra khi tư vấn - tách khỏi `hotline`
+  // (số hiển thị header/footer/liên hệ) vì không nhất thiết phải trùng nhau,
+  // vd hotline chăm sóc khách hàng chung khác với đường dây tư vấn nhanh của
+  // chatbot. Để trống (null) thì chatbot tự dùng lại `hotline` như trước.
+  chatbotPhone     String?
+  email            String
+  address          String
+  companyName      String
+  companyTaxCode   String
+  workingHours     String
+  // Logo hiển thị ở góc trái header (client/src/layout/Header.jsx) - null =
+  // dùng file tĩnh mặc định client/public/assets/images/logo.png, admin
+  // upload thì ảnh này thay thế. Dùng chung endpoint upload với banner/theme zone.
+  logoImage        String?
+  facebookUrl      String?
+  zaloUrl          String?
+  youtubeUrl       String?
+  tiktokUrl        String?
+  instagramUrl     String?
+  // Đoạn giới thiệu chính của trang "Giới thiệu" - phần còn lại của trang
+  // (giá trị cốt lõi, hành trình phát triển, số liệu thống kê) vẫn cố định
+  // trong code vì đó là thiết kế/khung trang, không phải nội dung hay đổi.
+  aboutText        String @db.Text
+  // Mỗi phần tử: { title, description } - 4 mục cam kết dịch vụ trên trang chủ
+  // (Giao Hàng Siêu Tốc, Chính Hãng 100%...). Icon/màu vẫn cố định trong code
+  // theo đúng vị trí (giống aboutText, chỉ nội dung admin sửa được).
+  coreFeatures     Json
+  // Mỗi phần tử: { title, description } - các bước ở trang "Hướng dẫn mua hàng".
+  buyingGuideSteps Json
+  // Mỗi phần tử: { question, answer } - trang "Câu hỏi thường gặp".
+  faqItems         Json
+  // Màu nền / ảnh nền tuỳ chỉnh theo từng khu vực (header/footer/section trang
+  // chủ) - phục vụ đổi giao diện theo mùa/sự kiện. Key là zone id cố định
+  // (danh sách ở client+server constants/themeZones.js), value luôn
+  // { bg, image } (cả 2 có thể null). Zone vắng mặt hoặc cả field null =
+  // dùng màu mặc định trong CSS, không đổi gì.
+  themeZones       Json?
+  // Icon "Đã thông báo Bộ Công Thương" ở footer + link tới trang xác nhận
+  // của cơ quan chức năng (vd online.gov.vn). Chưa đăng ký thì cả 2 để trống
+  // - footer tự hiện placeholder "Chưa thông báo" trung thực, không giả mạo
+  // đã đăng ký. Khi đăng ký xong, admin upload đúng icon + link thật vào đây.
+  complianceBadgeImage String?
+  complianceBadgeUrl   String?
+  // Banner dọc cạnh mỗi danh mục ở trang chủ (client/src/pages/Home.jsx) -
+  // mỗi phần tử: { categorySlug, image, eyebrow, title, priceLabel, perk,
+  // theme ('theme-amber'|'theme-dark'), side ('left'|'right'), linkType
+  // ('product'|'brand'|'category'), linkValue }. `image` rỗng = danh mục đó
+  // chưa có banner, section trang chủ tự hiện bình thường không banner.
+  // `linkValue` tuỳ theo linkType: product = đường dẫn trang sản phẩm dán
+  // tay, brand = tên nhãn hiệu, category = slug danh mục.
+  categoryBanners  Json?
+  // Ảnh nền trang trí áp dụng cho TẤT CẢ các trang công khai (client/src/layout/
+  // Layout.jsx) - null = dùng nền gradient vàng hổ phách mặc định theo màu
+  // thương hiệu (định nghĩa sẵn trong CSS .site-bg-wrap), admin upload ảnh thì
+  // ảnh thay thế gradient đó. Dùng chung endpoint upload với banner/theme zone.
+  pageBackgroundImage String?
+  // 2 banner phụ cạnh slider chính ở trang chủ (client/src/pages/Home.jsx) -
+  // mỗi phần tử: { image, title, linkType ('product'|'brand'|'category'),
+  // linkValue }. `image` rỗng = banner đó chưa cấu hình, cột banner phụ tự
+  // ẩn slot đó (ẩn cả cột nếu không banner nào có ảnh, slider chính chiếm
+  // trọn chiều rộng). `linkValue` tuỳ linkType, giống categoryBanners.
+  heroSideBanners  Json?
+  // Các slide của banner CHÍNH đầu trang chủ (client/src/pages/Home.jsx) -
+  // mỗi phần tử: { image, badgeText, badgeColor, title, subtitle, buttonText,
+  // buttonLink }. null/rỗng = dùng 3 slide mặc định viết sẵn trong code (nội
+  // dung giới thiệu chung), admin thêm slide thì thay thế toàn bộ bằng nội
+  // dung tự nhập. badgeColor là 1 trong các màu Bootstrap có sẵn (danger,
+  // primary, success, warning).
+  heroSlides       Json?
+  // Thông tin chuyển khoản hiển thị cho khách khi chọn thanh toán
+  // BANK_TRANSFER ở giỏ hàng/trang xác nhận đơn hàng - để trống thì client tự
+  // hiện thông báo "nhân viên sẽ liên hệ cung cấp thông tin" thay vì số tài
+  // khoản rỗng/mã QR vỡ hình.
+  bankName          String?
+  bankAccountNumber String?
+  bankAccountHolder String?
+  bankQrImage       String?
+  // Phí ship cộng thêm vào mọi đơn hàng (VND) - 0 = miễn phí ship mặc định.
+  // freeShippingThreshold: đơn hàng đạt từ mức này trở lên (trước phí ship)
+  // thì miễn phí ship dù shippingFlatFee > 0 - null = không áp dụng ngưỡng
+  // miễn phí, luôn tính phí ship theo shippingFlatFee.
+  shippingFlatFee       Int  @default(0)
+  freeShippingThreshold Int?
+  // Nội dung có thể chỉnh sửa của các trang "Chính sách"/"Hỗ trợ" tĩnh
+  // (đổi trả, bảo hành, vận chuyển, thanh toán, kiểm hàng, bảo vệ dữ liệu cá
+  // nhân, khiếu nại, điều khoản dịch vụ, bảo mật) - key là slug trang (vd
+  // "chinh-sach-doi-tra"), value luôn { sections: [{ heading, body }] }.
+  // Chỉ phần các mục đánh số (nội dung chính sách) được lưu ở đây - đoạn giới
+  // thiệu đầu trang và dòng liên hệ cuối trang vẫn viết cố định trong code
+  // của từng trang, giống cách aboutText/coreFeatures tách phần khung cố
+  // định khỏi phần nội dung admin sửa được. Slug không có trong đây (hoặc
+  // sections rỗng) thì trang tự dùng DEFAULT_SECTIONS viết sẵn trong code.
+  policyPages Json?
+  // Popup chào mừng hiện ra ít lâu sau khi vào trang (client/src/components/
+  // WelcomePopup.jsx) - chỉ hiện cho khách ĐÃ đăng nhập, dùng để quảng bá 1
+  // nội dung cụ thể (flash sale/sản phẩm/danh mục). Khách CHƯA đăng nhập thì
+  // component tự mở AuthModal mời đăng ký thay vì đọc field này.
+  // Shape: { enabled, image, title, buttonText, linkType ('product'|'brand'|
+  // 'category'), linkValue } - linkValue tuỳ linkType, giống categoryBanners.
+  // enabled=false hoặc thiếu image = không hiện popup quảng bá.
+  welcomePopup Json?
+  // 2 banner ngang khuyến mãi giữa trang chủ (dưới các khối danh mục, trên
+  // "Thương hiệu nổi bật") - trước đây viết cứng trong Home.jsx (ảnh tĩnh
+  // promo-banner-1.jpg/2.jpg + tiêu đề/mô tả/link cố định), giờ chuyển sang
+  // đây để admin sửa được. Luôn đúng 2 phần tử (khác categoryBanners không
+  // cố định số dòng) - rỗng thì Home.jsx tự dùng lại nội dung mặc định cũ.
+  // Shape mỗi phần tử: { image, title, subtitle, linkType, linkValue }.
+  promoBanners Json?
+  updatedAt        DateTime @updatedAt
+}
+
+// Cấu hình SMTP để gửi email (chào mừng, đặt lại mật khẩu) - tách khỏi
+// SiteSettings vì SiteSettings được trả về công khai qua GET /api/settings
+// cho client đọc (hotline, footer...), không được lẫn thông tin nhạy cảm
+// (mật khẩu SMTP) vào response công khai đó. Model này chỉ có route admin
+// riêng (OWNER/MANAGER). Chưa cấu hình (mọi field null) thì mailer.js tự
+// rơi về biến môi trường SMTP_*/.env, rồi rơi về in link ra console nếu
+// cũng chưa có (xem server/src/utils/mailer.js).
+model MailSettings {
+  id         Int      @id @default(1)
+  smtpHost   String?
+  smtpPort   Int?
+  smtpSecure Boolean  @default(false)
+  smtpUser   String?
+  smtpPass   String?
+  mailFrom   String?
+  updatedAt  DateTime @updatedAt
+}
+
+// Bộ đếm lượt thích trang + lượt truy cập - tách khỏi SiteSettings vì đây là
+// số liệu ghi liên tục (mỗi click, mỗi lần tải trang) chứ không phải nội
+// dung admin chỉnh sửa, không muốn 2 mối quan tâm khác nhau chung 1 dòng.
+// Cũng chỉ 1 dòng duy nhất (id cố định = 1), giống SiteSettings.
+model SiteStats {
+  id         Int @id @default(1)
+  likeCount  Int @default(0)
+  visitCount Int @default(0)
+}
+
+// Ghi bởi ai-service (Python/FastAPI) — xem Phase 7. Node chỉ đọc.
+model SalesReport {
+  id            Int      @id @default(autoincrement())
+  reportDate    DateTime @unique @db.Date
+  totalOrders   Int
+  totalRevenue  Int
+  topProductIds Json
+  generatedAt   DateTime @default(now())
+}
+
+// Ghi bởi ai-service (Python/FastAPI) — xem Phase 7. Node chỉ đọc.
+model ProductRecommendation {
+  id                Int     @id @default(autoincrement())
+  sourceProduct     Product @relation("SourceProduct", fields: [sourceProductId], references: [id], onDelete: Cascade)
+  sourceProductId   Int
+  recommendedIds    Json
+  updatedAt         DateTime @updatedAt
+
+  @@unique([sourceProductId])
+}
+
+// Đếm số đơn theo ngày (giờ Việt Nam) để sinh Order.code dạng "DH" + ngày +
+// số đếm 4 chữ số, VD DH260726-0001 (xem server/src/utils/orderCode.js).
+// Đếm bằng increment atomic trên 1 dòng duy nhất trong transaction tạo đơn -
+// KHÔNG đếm bằng COUNT(*) số đơn đã tạo trong ngày, vì 2 đơn tạo cùng lúc có
+// thể cùng đọc thấy 1 số đếm và sinh trùng mã.
+model OrderSequence {
+  dateKey String @id
+  counter Int    @default(0)
+}

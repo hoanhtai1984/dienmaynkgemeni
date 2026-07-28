@@ -1,0 +1,8 @@
+User-agent: *
+Disallow: /admin/
+Disallow: /gio-hang
+Disallow: /dat-hang-thanh-cong
+Disallow: /dat-lai-mat-khau
+Disallow: /so-sanh
+
+Sitemap: /sitemap.xml

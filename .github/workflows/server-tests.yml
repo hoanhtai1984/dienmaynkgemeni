@@ -1,0 +1,53 @@
+name: Server tests
+
+# Chạy test Jest (đăng nhập, đặt hàng...) tự động mỗi khi có push/PR - trước
+# đây repo không có bước này nên code lỗi vẫn lọt qua bình thường. MySQL chạy
+# dưới dạng service container có sẵn của GitHub Actions, không cần Docker cài
+# trên máy ai cả - chỉ cấu hình đúng root/không mật khẩu để khớp
+# server/tests/testEnv.js (dùng chung cho cả máy dev local lẫn CI).
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8
+        env:
+          MYSQL_ALLOW_EMPTY_PASSWORD: yes
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h localhost"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=10
+
+    defaults:
+      run:
+        working-directory: server
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - run: npm ci
+
+      - name: Wait for MySQL to accept connections
+        run: |
+          for i in $(seq 1 30); do
+            mysqladmin ping -h 127.0.0.1 -P 3306 -u root --silent && break
+            sleep 2
+          done
+
+      - run: npm test

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <rect width="400" height="400" fill="#f8f9fa"/>
+  <rect x="1" y="1" width="398" height="398" fill="none" stroke="#e8e8e8" stroke-width="2"/>
+  <g transform="translate(200,165)">
+    <circle cx="0" cy="0" r="46" fill="#FFC107" opacity="0.15"/>
+    <path d="M -28 14 L -14 -6 L -2 8 L 12 -14 L 28 14 Z" fill="none" stroke="#FFB300" stroke-width="4" stroke-linejoin="round" stroke-linecap="round"/>
+    <circle cx="-16" cy="-16" r="6" fill="none" stroke="#FFB300" stroke-width="4"/>
+    <rect x="-34" y="-28" width="68" height="56" rx="6" fill="none" stroke="#FFB300" stroke-width="4"/>
+  </g>
+  <text x="200" y="248" font-family="Arial, sans-serif" font-size="15" font-weight="bold" fill="#777" text-anchor="middle">Đang cập nhật hình ảnh</text>
+  <text x="200" y="270" font-family="Arial, sans-serif" font-size="12" fill="#aaa" text-anchor="middle">Điện Máy NK</text>
+</svg>

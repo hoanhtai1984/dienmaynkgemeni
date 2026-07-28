@@ -1,0 +1,26 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "server",
+      "port": 4000
+    },
+    {
+      "name": "client",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev"],
+      "cwd": "client",
+      "port": 5173
+    },
+    {
+      "name": "ai-service",
+      "runtimeExecutable": "venv/Scripts/uvicorn.exe",
+      "runtimeArgs": ["app.main:app", "--host", "0.0.0.0", "--port", "8000"],
+      "cwd": "ai-service",
+      "port": 8000
+    }
+  ]
+}

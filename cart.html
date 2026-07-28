@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Giỏ Hàng Của Bạn - Điện Máy NK</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    <link rel="stylesheet" href="assets/css/style.css">
+    <link rel="stylesheet" href="assets/css/subpages.css">
+</head>
+<body>
+
+<div id="header-placeholder"></div>
+
+<main class="py-5 bg-light">
+    <div class="container">
+        <h2 class="fw-bold mb-4"><i class="bi bi-cart-check-fill text-warning"></i> Giỏ Hàng (<span id="cart-total-items">0</span> sản phẩm)</h2>
+
+        <div class="row g-4">
+            <div class="col-lg-8">
+                <div class="bg-white p-4 rounded-3 border shadow-sm">
+                    <div class="row border-bottom pb-2 mb-3 fw-bold text-muted d-none d-md-flex small" id="cart-table-head">
+                        <div class="col-md-6">Sản phẩm</div>
+                        <div class="col-md-2 text-center">Giá tiền</div>
+                        <div class="col-md-2 text-center">Số lượng</div>
+                        <div class="col-md-2 text-end">Thành tiền</div>
+                    </div>
+
+                    <div id="cart-items-container">
+                        <!-- Sản phẩm trong giỏ được render động bởi assets/js/cart.js -->
+                    </div>
+
+                    <div class="text-center py-5 d-none" id="cart-empty-state">
+                        <i class="bi bi-cart-x text-muted" style="font-size: 3rem;"></i>
+                        <p class="text-muted mt-3 mb-3">Giỏ hàng của bạn đang trống.</p>
+                        <a href="index.html" class="btn btn-warning fw-bold rounded-pill px-4">Tiếp tục mua sắm</a>
+                    </div>
+
+                    <div class="mt-3" id="continue-shopping-link">
+                        <a href="category.html" class="btn btn-outline-dark btn-sm rounded-pill px-3">
+                            <i class="bi bi-arrow-left"></i> Tiếp tục mua sắm
+                        </a>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-4">
+                <div class="bg-white p-4 rounded-3 border shadow-sm mb-4">
+                    <h5 class="fw-bold mb-3 pb-2 border-bottom">Tóm tắt đơn hàng</h5>
+                    <div class="d-flex justify-content-between mb-2">
+                        <span class="text-muted">Tạm tính:</span>
+                        <span class="fw-bold text-dark" id="summary-subtotal">0đ</span>
+                    </div>
+                    <div class="d-flex justify-content-between mb-3">
+                        <span class="text-muted">Phí vận chuyển:</span>
+                        <span class="text-success fw-bold">Miễn phí</span>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center mb-0">
+                        <span class="fw-bold">Tổng tiền thanh toán:</span>
+                        <span class="fs-4 fw-bold text-danger" id="summary-total">0đ</span>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-3 border shadow-sm">
+                    <h5 class="fw-bold mb-3 pb-2 border-bottom"><i class="bi bi-truck text-primary"></i> Thông tin giao hàng</h5>
+                    <form id="checkout-form">
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Họ và tên *</label>
+                            <input type="text" class="form-control form-control-sm" id="checkout-name" placeholder="Nhập tên người nhận" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Số điện thoại *</label>
+                            <input type="tel" class="form-control form-control-sm" id="checkout-phone" placeholder="Nhập số điện thoại" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">Địa chỉ nhận hàng *</label>
+                            <textarea class="form-control form-control-sm" id="checkout-address" rows="3" placeholder="Số nhà, tên đường, phường/xã, quận/huyện..." required></textarea>
+                        </div>
+                        <div class="mb-4">
+                            <label class="form-label small fw-bold">Phương thức thanh toán</label>
+                            <div class="form-check mb-2">
+                                <input class="form-check-input" type="radio" name="payment-method" id="pay-cod" checked>
+                                <label class="form-check-label small" for="pay-cod">Thanh toán khi nhận hàng (COD)</label>
+                            </div>
+                            <div class="form-check">
+                                <input class="form-check-input" type="radio" name="payment-method" id="pay-bank">
+                                <label class="form-check-label small" for="pay-bank">Chuyển khoản ngân hàng (Qua mã QR)</label>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-warning w-100 py-2 fw-bold text-dark rounded-pill fs-5" id="checkout-submit-btn">
+                            <i class="bi bi-bag-check-fill"></i> XÁC NHẬN ĐẶT HÀNG
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</main>
+
+<div id="footer-placeholder"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="assets/js/components.js"></script>
+<script src="assets/js/products-data.js"></script>
+<script src="assets/js/cart-manager.js"></script>
+<script src="assets/js/header.js"></script>
+<script src="assets/js/search.js"></script>
+<script src="assets/js/order-config.js"></script>
+<script src="assets/js/notify.js"></script>
+<script src="assets/js/cart.js"></script>
+</body>
+</html>
